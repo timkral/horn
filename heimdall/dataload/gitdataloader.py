@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
     # TODO: Replace with polling system
     git_commit_sha1 = sys.argv[1]
-    data_store_url = 'http://127.0.0.1:5984/compliance/{0}'.format(git_commit_sha1)
+    data_store_url = 'http://127.0.0.1:5984/heimdall/{0}'.format(git_commit_sha1)
 
     local_git_commit = LocalGitCommit('/home/tkral/dev/raiden/raiden-net', git_commit_sha1)
     remote_git_commit = RemoteGitCommit('https://{0}/api/v3/repos/{1}/{2}'.format('git.soma.salesforce.com', 'raiden', 'raiden-net'), '0d9250a720b60451eddfbb54583605376fb1f1dd', local_git_commit)
