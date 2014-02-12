@@ -25,7 +25,11 @@ In order to run Heimdall, one will need the following Python modules:
 Setup
 -----
 
-Heimdall comes with a set of design documents that must be pushed to CouchDB. This can be done easily with a CouchDB push:
+1. Ensure that the ccollab command line client is configured:
+```sh
+ccollab login
+```
+2. Push design documents to CouchDB:
 ```sh
 cd <heimdall_home>
 python heimdall/setup/couchdbpush.py
@@ -45,6 +49,17 @@ To load a CodeCollaborator review:
 cd <heimdall_home>
 python heimdall/dataload/ccollabdataloader.py <ccollab_review_id>
 ```
+
+Development
+-----------
+
+Most map-reduce development will likely occur on CouchDB itself. To support this, Heimdall comes with a sync utility to pull design documents from CouchDB:
+```sh
+cd <heimdall_home>
+python heimdall/setup/couchdbsync.py
+git commit -a
+```
+Note that CouchDB sync and CouchDB push are meant to be used in concert.
 
 [Couchdbkit Module]:http://couchdbkit.org/download.html
 [Requests Module]:http://docs.python-requests.org/en/latest/user/install/
