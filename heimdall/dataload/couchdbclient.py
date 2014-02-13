@@ -4,7 +4,9 @@ A CouchDB client for pushing and syncing design documents.
 __author__ = 'tkral'
 
 import distutils.core
+import json
 import os
+import requests
 import tempfile
 
 from couchdbkit import *
@@ -16,6 +18,11 @@ class CouchDBClient:
         self.server = Server(uri=config.config_dict['couch_db_instance'])
         self.heimdall_db = self.server.get_or_create_db('heimdall')
         self.file_dir = os.path.dirname(os.path.realpath(__file__))
+
+    def load_doc(self, doc_id, doc_dict):
+        # TODO: Should we use the native couchdbkit to do this?
+        put_response = requests.put('{0}/heimdall/{1}'.format(self.server.uri, doc_id), data=json.dumps(doc_dict, sort_keys=True))
+        return put_response.json()
 
     def push(self):
         design_root_dir = os.path.join(self.file_dir, '_design')

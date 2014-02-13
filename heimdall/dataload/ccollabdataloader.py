@@ -8,21 +8,21 @@ import xmltodict
 
 from subprocess import call, check_output
 
-class RemoteCCollabReview:
+class CCollabReview:
 
-    def __init__(self, ccollab_review_id):
-        self.ccollab_review_id = ccollab_review_id
+    def __init__(self, review_id):
+        self.review_id = review_id
 
-    def __calc_hash(self, ccollab_review_dict):
+    def __calc_hash(self, review_dict):
         review_md5 = 0
 
-        artifacts =  ccollab_review_dict["reviews"]["review"]["artifacts"]["artifact"]
+        artifacts =  review_dict["reviews"]["review"]["artifacts"]["artifact"]
         artifacts_type = artifacts.__class__.__name__
 
         # Unfortunately, xmltodict doesn't handle a single element the same way as multiple
         # elements. So we have to check whether or not we have multiple elements (i.e. a list)
         if artifacts_type == 'list':
-            for artifact in ccollab_review_dict["reviews"]["review"]["artifacts"]["artifact"]:
+            for artifact in review_dict["reviews"]["review"]["artifacts"]["artifact"]:
                 review_md5 ^= self.__calc_artifact_hash(artifact)
         else:
             review_md5 ^= self.__calc_artifact_hash(artifacts)
@@ -35,16 +35,16 @@ class RemoteCCollabReview:
         return int(hashlib.md5(filename).hexdigest(), 16) ^ int(file_content_hash, 16)
 
     def load(self):
-        ccollab_review_xml = check_output(['ccollab', 'admin', 'review-xml', self.ccollab_review_id])
+        review_xml = check_output(['ccollab', 'admin', 'review-xml', self.review_id])
 
-        ccollab_review_dict = xmltodict.parse(ccollab_review_xml)
-        ccollab_review_checksum = self.__calc_hash(ccollab_review_dict)
+        review_dict = xmltodict.parse(review_xml)
+        review_checksum = self.__calc_hash(review_dict)
 
-        ccollab_review_dict.update(category='review');
-        ccollab_review_dict.update(category_sub='ccollab')
-        ccollab_review_dict.update(checksum='{0:032x}'.format(ccollab_review_checksum))
+        review_dict.update(category='review');
+        review_dict.update(category_sub='ccollab')
+        review_dict.update(checksum='{0:032x}'.format(review_checksum))
 
-        return ccollab_review_dict
+        return review_dict
 
 if __name__ == '__main__':
 
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     ccollab_review_id = sys.argv[1]
     data_store_url = 'http://127.0.0.1:5984/compliance/{0}'.format(ccollab_review_id)
 
-    remote_ccollab_review = RemoteCCollabReview(ccollab_review_id)
+    remote_ccollab_review = CCollabReview(ccollab_review_id)
     ccollab_review_dict = remote_ccollab_review.load()
 
     ccollab_review_phase = ccollab_review_dict["reviews"]["review"]["general"]["phase"]["#text"]

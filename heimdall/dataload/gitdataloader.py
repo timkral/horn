@@ -8,14 +8,26 @@ import sys
 
 from subprocess import call, check_output
 
-class LocalGitCommit:
+class GitCommit:
 
-    def __init__(self, local_work_tree, git_commit_sha1):
-        self.local_work_tree = local_work_tree
-        self.local_git_dir = os.path.join(local_work_tree, '.git')
-        self.git_commit_sha1 = git_commit_sha1
+    def __init__(self, remote_git_repo, local_git_repo, sha1):
+        self.remote_git_repo = remote_git_repo
+        self.local_git_repo = local_git_repo
+        self.sha1 = sha1
 
-    def calc_hash(self):
+    def load(self):
+        get_response = requests.get(self.remote_git_repo.remote_api_url)
+
+        git_commit_dict = get_response.json()
+        git_commit_checksum = self.__calc_hash()
+
+        git_commit_dict.update(category='commit')
+        git_commit_dict.update(category_sub='git')
+        git_commit_dict.update(checksum='{0:032x}'.format(git_commit_checksum))
+
+        return git_commit_dict
+
+    def __calc_hash(self):
         commit_md5 = 0
         for filename in self.__list_diff_filenames():
             commit_md5 ^= self.__calc_file_hash(filename)
@@ -25,12 +37,10 @@ class LocalGitCommit:
     def __calc_file_hash(self, filename):
         # Check if the filename exists at the particular git revision
         # This exits with zero when there's no error
-        # TODO: Write any error message out to log file
-        with open(os.devnull, "w") as fnull:
-            file_exists = call(['git', '--git-dir={0}'.format(self.local_git_dir), '--work-tree={0}'.format(self.local_work_tree), 'cat-file', '-e', '{0}:{1}'.format(self.git_commit_sha1, filename)], stderr=fnull)
+        file_exists = self.local_git_repo.exec_cmd(['cat-file', '-e', '{0}:{1}'.format(self.sha1, filename)], suppress_error=True)
 
         if file_exists == 0:
-            file_content = check_output(['git', '--git-dir={0}'.format(self.local_git_dir), '--work-tree={0}'.format(self.local_work_tree), 'show', '{0}:{1}'.format(self.git_commit_sha1, filename)])
+            file_content = self.local_git_repo.exec_cmd(['show', '{0}:{1}'.format(self.sha1, filename)], return_output=True)
             file_content_hash = hashlib.md5(file_content).hexdigest()
         else:
             # In the case where the file is missing from the revision (which may just be a deleted file),
@@ -42,7 +52,8 @@ class LocalGitCommit:
         return int(filename_hash, 16) ^ int(file_content_hash, 16)
 
     def __list_diff_filenames(self):
-        git_diff_output = check_output(['git', '--git-dir={0}'.format(self.local_git_dir), '--work-tree={0}'.format(self.local_work_tree), 'diff', '--numstat', '{0}~1'.format(self.git_commit_sha1), self.git_commit_sha1])
+        # Execute a git diff with the --numstat option. This produces a machine readable list of changed files in the diff
+        git_diff_output = self.local_git_repo.exec_cmd(['diff', '--numstat', '{0}~1'.format(self.sha1), self.sha1], return_output=True)
         git_diff_output_parsed = git_diff_output.splitlines()
 
         diff_filenames = []
@@ -61,34 +72,45 @@ class LocalGitCommit:
 
         return diff_filenames
 
-class RemoteGitCommit:
+class LocalGitRepo:
 
-    def __init__(self, remote_api_url, access_token, local_git_commit):
-        self.remote_api_url = remote_api_url
-        self.access_token = access_token
-        self.local_git_commit = local_git_commit
+    def __init__(self, config):
+        self.local_work_tree = os.path.join(config.config_dict['git_repo_local_dir'], config.config_dict['git_repo_org'], config.config_dict['git_repo_name'])
+        if not os.path.exists(self.local_work_tree):
+            os.makedirs(self.local_work_tree)
 
-    def load(self):
-        get_response = requests.get('{0}/commits/{1}?access_token={2}'.format(self.remote_api_url, self.local_git_commit.git_commit_sha1, self.access_token))
+        # If the local git dif does not exist then we don't have an initialized
+        # git repository. So initialize one.
+        self.local_git_dir = os.path.join(self.local_work_tree, '.git')
+        if not os.path.exists(self.local_git_dir):
+            # Create a special environment for executing the `git init` command
+            # this will set the GIT_DIR env variable to ensure that the .git/
+            # directory is placed there
+            git_init_env = os.environ.copy()
+            git_init_env['GIT_DIR'] = self.local_git_dir
+            call(['git', '--work-tree={0}'.format(self.local_work_tree), 'init'], env=git_init_env)
 
-        git_commit_dict = get_response.json()
-        git_commit_checksum = self.local_git_commit.calc_hash()
+            self.exec_cmd(['remote', 'add', 'origin', '{0}/{1}/{2}.git'.format(config.config_dict['git_repo_instance'], config.config_dict['git_repo_org'], config.config_dict['git_repo_name'])])
 
-        git_commit_dict.update(category='commit')
-        git_commit_dict.update(category_sub='git')
-        git_commit_dict.update(checksum='{0:032x}'.format(git_commit_checksum))
+        self.git_branch = config.config_dict['git_repo_branch']
 
-        return git_commit_dict
+        # Execute a pull
+        self.exec_cmd(['pull', 'origin'])
+        # Checkout the configurated git branch
+        self.exec_cmd(['checkout', self.git_branch])
 
-if __name__ == '__main__':
+    def exec_cmd(self, arg_list, return_output=False, suppress_error=False):
+        git_cmd_list = ['git', '--git-dir={0}'.format(self.local_git_dir), '--work-tree={0}'.format(self.local_work_tree)] + arg_list
 
-    # TODO: Replace with polling system
-    git_commit_sha1 = sys.argv[1]
-    data_store_url = 'http://127.0.0.1:5984/heimdall/{0}'.format(git_commit_sha1)
+        # TODO: Write any error message out to log file
+        with open(os.devnull, "w") as fnull:
+            if return_output:
+                return check_output(git_cmd_list, stderr=fnull if suppress_error else sys.stderr)
+            else:
+                return call(git_cmd_list, stderr=fnull if suppress_error else sys.stderr)
 
-    local_git_commit = LocalGitCommit('/home/tkral/dev/raiden/raiden-net', git_commit_sha1)
-    remote_git_commit = RemoteGitCommit('https://{0}/api/v3/repos/{1}/{2}'.format('git.soma.salesforce.com', 'raiden', 'raiden-net'), '0d9250a720b60451eddfbb54583605376fb1f1dd', local_git_commit)
-    git_commit_dict = remote_git_commit.load()
+class RemoteGitRepo:
 
-    put_response = requests.put(data_store_url, data=json.dumps(git_commit_dict, sort_keys=True))
-    print json.dumps(put_response.json(), sort_keys=True)
+    def __init__(self, config):
+                # Build the remote git API url from the Heimdall configuration (see HeimdallConfig class)
+        self.remote_api_url = '{0}/api/v3/repos/{1}/{2}'.format(config.config_dict['git_repo_instance'], config.config_dict['git_repo_org'], config.config_dict['git_repo_name'])
