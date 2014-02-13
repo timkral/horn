@@ -8,25 +8,43 @@ from heimdall.dataload.couchdbclient import CouchDBClient
 from heimdall.setup.heimdallconfig import HeimdallConfig
 from heimdall.setup.heimdallverifier import HeimdallVerifier
 
-def config(args):
-    config = __config()
+class HornException(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
-    if args.view:
+##### Horn helper functions #####
+def __get_config():
+    horn_dir = os.path.dirname(os.path.realpath(__file__)) # directory where horn sits
+    return HeimdallConfig(config_dir=horn_dir)
+
+def __load_config():
+    config = __get_config()
+    if not config.exists():
+        raise HornException('No configuration found. Run: horn config')
+
+    config.load()
+    return config
+
+##### Horn callback functions #####
+def config(args):
+    config = __get_config()
+
+    if args.purge:
+        config.purge()
+        print 'Configuration purged'
+    elif not args.view:
+        config.init()
+        print json.dumps(config.config_dict, indent=4, sort_keys=True)
+    elif not config.exists(): # args.view and not config.exists()
+        print 'No configuration available for viewing. Run: horn config'
+    else: # args.view
         config.load()
         print json.dumps(config.config_dict, indent=4, sort_keys=True)
-    else:
-        config.init()
-
-def __config():
-    file_dir = __file_dir()
-    return HeimdallConfig(config_dir=file_dir)
-
-def __file_dir():
-    return os.path.dirname(os.path.realpath(__file__))
 
 def loadcommit(args):
-    config = __config()
-    config.load()
+    config = __load_config()
 
     remote_git_repo = RemoteGitRepo(config)
     local_git_repo = LocalGitRepo(config)
@@ -38,8 +56,7 @@ def loadcommit(args):
     print json.dumps(load_doc_dict, sort_keys=True)
 
 def loadreview(args):
-    config = __config()
-    config.load()
+    config = __load_config()
 
     ccollab_review = CCollabReview(args.review_id)
     ccollab_review_dict = ccollab_review.load()
@@ -49,33 +66,33 @@ def loadreview(args):
     print json.dumps(load_doc_dict, sort_keys=True)
 
 def push(args):
-    config = __config()
-    config.load()
+    config = __load_config()
 
     client = CouchDBClient(config)
     client.push()
     print 'Success!'
 
 def sync(args):
-    config = __config()
-    config.load()
+    config = __load_config()
 
     client = CouchDBClient(config)
     client.sync()
     print 'Success!'
 
 def verify(args):
-    file_dir = __file_dir()
-    verifier = HeimdallVerifier(config_dir=file_dir)
+    config = __get_config()
+    verifier = HeimdallVerifier(config)
 
     verifier.verify()
 
+##### Main entry point #####
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='horn')
     subparsers = parser.add_subparsers(help='sub-command help')
 
     parser_config = subparsers.add_parser('config', help='setup heimdall configuration')
     parser_config.add_argument('--view', dest='view', action='store_true')
+    parser_config.add_argument('--purge', dest='purge', action='store_true')
     parser_config.set_defaults(func=config)
 
     # TODO: Add git polling
