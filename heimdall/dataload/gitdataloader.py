@@ -16,7 +16,7 @@ class GitCommit:
         self.sha1 = sha1
 
     def load(self):
-        get_response = requests.get(self.remote_git_repo.remote_api_url)
+        get_response = requests.get('{0}/commits/{1}'.format(self.remote_git_repo.remote_api_url, self.sha1))
 
         git_commit_dict = get_response.json()
         git_commit_checksum = self.__calc_hash()
