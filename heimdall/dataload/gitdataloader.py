@@ -1,7 +1,6 @@
 __author__ = 'tkral'
 
 import hashlib
-import json
 import os
 import requests
 import sys
